@@ -16,6 +16,7 @@ The APK is currently built as a debug-signed test build so Android can install i
 
 - Imports .zip, .smf, .sgm, and .ssl files through Android's system file picker.
 - Keeps imported game files in the app's private storage and lists them in the library.
+- Lets you add a cover image to each game from an image already on the phone.
 - Runs the bundled EmulatorJS runtime and Native32Emu core offline after the APK is built.
 - Shows the emulator's touch controls when the game is running.
 - The emulator core supports Native32 .ssl_sav game saves; persistence depends on the game's own save behavior and the EmulatorJS persistent save directory.
