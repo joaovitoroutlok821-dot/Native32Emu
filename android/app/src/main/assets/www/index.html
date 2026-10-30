@@ -153,6 +153,8 @@
     $("library").style.display = "none";
     $("player").style.display = "block";
     $("playing-title").textContent = name;
+    document.body.classList.add("playing-mode");
+    try { if (window.NativeGames) NativeGames.enterFullscreen(); } catch (_) {}
     window.EJS_player = "#game";
     window.EJS_core = "native32emu";
     window.EJS_gameUrl = url;
@@ -196,6 +198,8 @@
 
   window.leaveGame = function () {
     if (!booted) return;
+    try { if (window.NativeGames) NativeGames.exitFullscreen(); } catch (_) {}
+    document.body.classList.remove("playing-mode");
     window.location.reload();
   };
   $("back").addEventListener("click", () => window.location.reload());
