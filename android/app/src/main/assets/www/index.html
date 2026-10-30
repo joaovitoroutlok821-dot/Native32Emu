@@ -21,10 +21,14 @@
     h2 { font-size:17px; margin:0 0 12px; }
     .count { color:var(--muted); font-size:12px; }
     .games { display:grid; grid-template-columns:repeat(auto-fill,minmax(145px,1fr)); gap:10px; }
-    .game { min-width:0; border:1px solid #ffffff14; border-radius:14px; padding:13px 11px; background:#202b40; text-align:left; color:var(--text); }
-    .cover { display:flex; align-items:center; justify-content:center; height:76px; margin-bottom:10px; border-radius:9px; background:linear-gradient(145deg,#2b4568,#18243a); font-size:31px; }
+    .game { min-width:0; border:1px solid #ffffff14; border-radius:14px; padding:10px; background:#202b40; color:var(--text); }
+    .cover { display:flex; align-items:center; justify-content:center; width:100%; height:100px; margin-bottom:10px; border-radius:9px; background:linear-gradient(145deg,#2b4568,#18243a); font-size:31px; overflow:hidden; }
+    .cover img { width:100%; height:100%; object-fit:cover; }
     .game-name { font-size:13px; font-weight:700; overflow-wrap:anywhere; }
     .game-ext { margin-top:4px; color:var(--muted); font-size:11px; }
+    .game-actions { display:flex; gap:6px; margin-top:10px; }
+    .game-actions button { flex:1; border:1px solid #ffffff1f; border-radius:8px; padding:8px 5px; background:#2b3b56; color:var(--text); font-size:11px; font-weight:700; }
+    .game-actions .open-game { background:#e99b2e; color:#111827; border:0; }
     .empty { padding:22px 8px; color:var(--muted); text-align:center; font-size:13px; line-height:1.5; }
     #player { display:none; }
     #game { width:100%; min-height:300px; background:#000; border-radius:12px; overflow:hidden; }
@@ -62,6 +66,7 @@
   <footer>Native32Emu · Os jogos não são incluídos no aplicativo. Use arquivos que você tenha direito de utilizar.</footer>
 </main>
 <input id="file-picker" type="file" accept=".zip,.smf,.sgm,.ssl,application/zip" hidden>
+<input id="cover-picker" type="file" accept="image/*" hidden>
 <script>
 (function () {
   "use strict";
@@ -87,25 +92,46 @@
     $("games").innerHTML = "";
     $("empty").style.display = names.length ? "none" : "block";
     names.forEach(name => {
-      const button = document.createElement("button");
-      button.className = "game";
-      button.type = "button";
+      const card = document.createElement("article");
+      card.className = "game";
       const cover = document.createElement("div");
       cover.className = "cover";
-      cover.textContent = "🎮";
+      const coverUrl = NativeGames.coverUrl(name);
+      if (coverUrl) {
+        const image = document.createElement("img");
+        image.src = coverUrl;
+        image.alt = "Capa de " + name;
+        cover.appendChild(image);
+      } else {
+        cover.textContent = "🎮";
+      }
       const title = document.createElement("div");
       title.className = "game-name";
       title.textContent = name;
       const ext = document.createElement("div");
       ext.className = "game-ext";
-      ext.textContent = name.split(".").pop().toUpperCase() + " · toque para jogar";
-      button.append(cover, title, ext);
-      button.addEventListener("click", () => {
+      ext.textContent = name.split(".").pop().toUpperCase();
+      const actions = document.createElement("div");
+      actions.className = "game-actions";
+      const open = document.createElement("button");
+      open.className = "open-game";
+      open.type = "button";
+      open.textContent = "Jogar";
+      open.addEventListener("click", () => {
         const url = NativeGames.gameUrl(name);
         if (!url) { showMessage("Não foi possível abrir este arquivo. Importe o jogo novamente."); return; }
         startGame(url, name);
       });
-      $("games").appendChild(button);
+      const addCover = document.createElement("button");
+      addCover.type = "button";
+      addCover.textContent = coverUrl ? "Trocar capa" : "Adicionar capa";
+      addCover.addEventListener("click", () => {
+        NativeGames.prepareCover(name);
+        $("cover-picker").click();
+      });
+      actions.append(open, addCover);
+      card.append(cover, title, ext, actions);
+      $("games").appendChild(card);
     });
   };
 
@@ -133,6 +159,14 @@
   }
 
   $("add-game").addEventListener("click", () => $("file-picker").click());
+  $("cover-picker").addEventListener("change", event => {
+    if (event.target.files && event.target.files[0]) {
+      showMessage("Capa importada. Ela aparecerá na biblioteca.");
+      window.refreshGameLibrary();
+    }
+    event.target.value = "";
+  });
+
   $("file-picker").addEventListener("change", event => {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
