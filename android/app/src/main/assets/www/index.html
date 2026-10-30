@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#0a0e18">
+  <title>Native32Emu</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0a0e18; --panel:#141c2d; --accent:#f5a623; --text:#f5f7fb; --muted:#aab5ca; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:radial-gradient(circle at top,#1a2942,var(--bg) 58%); color:var(--text); font-family:system-ui,-apple-system,Roboto,sans-serif; min-height:100vh; }
+    header { padding:24px 18px 16px; text-align:center; }
+    .logo { display:inline-flex; align-items:center; justify-content:center; width:54px; height:54px; border-radius:16px; background:linear-gradient(135deg,#ffca62,#e77d1e); color:#101521; font-size:27px; font-weight:900; box-shadow:0 8px 24px #0005; }
+    h1 { margin:12px 0 4px; font-size:25px; letter-spacing:.2px; }
+    .subtitle { margin:0 auto; max-width:430px; color:var(--muted); font-size:14px; line-height:1.45; }
+    main { padding:0 14px 26px; max-width:760px; margin:auto; }
+    .panel { background:#141c2deF; border:1px solid #ffffff12; border-radius:18px; padding:16px; margin:14px 0; box-shadow:0 12px 32px #0002; }
+    .primary { width:100%; border:0; border-radius:13px; padding:15px 16px; background:linear-gradient(135deg,#ffca62,#ef941f); color:#141821; font-size:16px; font-weight:800; }
+    .hint { color:var(--muted); font-size:12px; line-height:1.45; margin:10px 2px 0; }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    h2 { font-size:17px; margin:0 0 12px; }
+    .count { color:var(--muted); font-size:12px; }
+    .games { display:grid; grid-template-columns:repeat(auto-fill,minmax(145px,1fr)); gap:10px; }
+    .game { min-width:0; border:1px solid #ffffff14; border-radius:14px; padding:10px; background:#202b40; color:var(--text); }
+    .cover { display:flex; align-items:center; justify-content:center; width:100%; height:100px; margin-bottom:10px; border-radius:9px; background:linear-gradient(145deg,#2b4568,#18243a); font-size:31px; overflow:hidden; }
+    .cover img { width:100%; height:100%; object-fit:cover; }
+    .game-name { font-size:13px; font-weight:700; overflow-wrap:anywhere; }
+    .game-ext { margin-top:4px; color:var(--muted); font-size:11px; }
+    .game-actions { display:flex; gap:6px; margin-top:10px; }
+    .game-actions button { flex:1; border:1px solid #ffffff1f; border-radius:8px; padding:8px 5px; background:#2b3b56; color:var(--text); font-size:11px; font-weight:700; }
+    .game-actions .open-game { background:#e99b2e; color:#111827; border:0; }
+    .empty { padding:22px 8px; color:var(--muted); text-align:center; font-size:13px; line-height:1.5; }
+    #player { display:none; }
+    #game { width:100%; min-height:300px; background:#000; border-radius:12px; overflow:hidden; }
+    body.playing-mode { margin:0; min-height:100%; overflow:hidden; background:#000; }
+    body.playing-mode #player {
+      display:block !important; position:fixed; inset:0; z-index:9999;
+      width:100vw; height:100vh; height:100dvh; margin:0; padding:0;
+      border:0; border-radius:0; overflow:hidden; background:#000;
+    }
+    body.playing-mode #game {
+      width:100vw; height:100vh; height:100dvh; min-height:0;
+      margin:0; padding:0; border-radius:0; overflow:hidden;
+    }
+    body.playing-mode .gamebar,
+    body.playing-mode #player > .hint { display:none !important; }
+    .gamebar { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:12px; }
+    .secondary { border:1px solid #ffffff24; background:#202b40; color:var(--text); border-radius:10px; padding:10px 12px; font-weight:700; }
+    .message { display:none; border-radius:10px; padding:11px; margin-top:10px; background:#542d26; color:#ffe0d7; font-size:13px; }
+    footer { padding:0 4px; text-align:center; color:#8490a7; font-size:11px; line-height:1.5; }
+    @media (orientation:landscape) { header { padding:12px; } header .logo { width:38px;height:38px;font-size:20px; } h1 { display:inline-block; margin:0 0 0 8px; vertical-align:middle; font-size:20px; } .subtitle { display:none; } }
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">N32</div>
+  <h1>Native32Emu</h1>
+  <p class="subtitle">Seu catálogo de jogos Native32 em um aplicativo Android independente.</p>
+</header>
+<main>
+  <section id="library">
+    <div class="panel">
+      <button class="primary" id="add-game">＋ Adicionar jogo</button>
+      <p class="hint">Escolha um arquivo de jogo que você já tenha no celular. Compatíveis: .ZIP, .SMF, .SGM e .SSL. Os arquivos importados ficam na biblioteca do aplicativo.</p>
+      <div id="message" class="message" role="status"></div>
+    </div>
+    <div class="panel">
+      <div class="row"><h2>Minha biblioteca</h2><span class="count" id="count">0 jogos</span></div>
+      <div id="games" class="games"></div>
+      <div id="empty" class="empty">Sua biblioteca está vazia.<br>Toque em “Adicionar jogo” para importar o primeiro jogo.</div>
+    </div>
+  </section>
+  <section id="player" class="panel">
+    <div class="gamebar"><button class="secondary" id="back">← Biblioteca</button><strong id="playing-title">Jogando</strong></div>
+    <div id="game"></div>
+    <p class="hint">Os controles de toque do emulador aparecem durante o jogo. O progresso interno dos jogos é salvo quando o próprio jogo e o núcleo suportam salvamento.</p>
+  </section>
+  <footer>Native32Emu · Os jogos não são incluídos no aplicativo. Use arquivos que você tenha direito de utilizar.</footer>
+</main>
+<input id="file-picker" type="file" accept=".zip,.smf,.sgm,.ssl,application/zip" hidden>
+<input id="cover-picker" type="file" accept="image/*" hidden>
+<script>
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const supported = /\.(zip|smf|sgm|ssl)$/i;
+  let booted = false;
+  let objectUrl = null;
+
+  function showMessage(message) {
+    $("message").textContent = message;
+    $("message").style.display = "block";
+  }
+  window.showNativeError = showMessage;
+
+  function nativeList() {
+    try { return window.NativeGames ? JSON.parse(NativeGames.listGames()) : []; }
+    catch (_) { return []; }
+  }
+
+  window.refreshGameLibrary = function () {
+    const names = nativeList();
+    $("count").textContent = names.length + (names.length === 1 ? " jogo" : " jogos");
+    $("games").innerHTML = "";
+    $("empty").style.display = names.length ? "none" : "block";
+    names.forEach(name => {
+      const card = document.createElement("article");
+      card.className = "game";
+      const cover = document.createElement("div");
+      cover.className = "cover";
+      const coverUrl = NativeGames.coverUrl(name);
+      if (coverUrl) {
+        const image = document.createElement("img");
+        image.src = coverUrl;
+        image.alt = "Capa de " + name;
+        cover.appendChild(image);
+      } else {
+        cover.textContent = "🎮";
+      }
+      const title = document.createElement("div");
+      title.className = "game-name";
+      title.textContent = name;
+      const ext = document.createElement("div");
+      ext.className = "game-ext";
+      ext.textContent = name.split(".").pop().toUpperCase();
+      const actions = document.createElement("div");
+      actions.className = "game-actions";
+      const open = document.createElement("button");
+      open.className = "open-game";
+      open.type = "button";
+      open.textContent = "Jogar";
+      open.addEventListener("click", () => {
+        const url = NativeGames.gameUrl(name);
+        if (!url) { showMessage("Não foi possível abrir este arquivo. Importe o jogo novamente."); return; }
+        startGame(url, name);
+      });
+      const addCover = document.createElement("button");
+      addCover.type = "button";
+      addCover.textContent = coverUrl ? "Trocar capa" : "Adicionar capa";
+      addCover.addEventListener("click", () => {
+        NativeGames.prepareCover(name);
+        $("cover-picker").click();
+      });
+      actions.append(open, addCover);
+      card.append(cover, title, ext, actions);
+      $("games").appendChild(card);
+    });
+  };
+
+  function startGame(url, name) {
+    if (booted) return;
+    booted = true;
+    $("library").style.display = "none";
+    $("player").style.display = "block";
+    $("playing-title").textContent = name;
+    document.body.classList.add("playing-mode");
+    try { if (window.NativeGames) NativeGames.enterFullscreen(); } catch (_) {}
+    window.EJS_player = "#game";
+    window.EJS_core = "native32emu";
+    window.EJS_gameUrl = url;
+    window.EJS_gameName = name;
+    window.EJS_pathtodata = "data/";
+    window.EJS_startOnLoaded = true;
+    window.EJS_backgroundColor = "#000000";
+    window.EJS_gameParentUrl = window.location.href;
+    const script = document.createElement("script");
+    script.src = "data/loader.js";
+    script.onerror = () => {
+      booted = false;
+      showMessage("Não foi possível carregar o emulador. Confira se o APK foi compilado com os arquivos do núcleo.");
+    };
+    document.body.appendChild(script);
+  }
+
+  $("add-game").addEventListener("click", () => $("file-picker").click());
+  $("cover-picker").addEventListener("change", event => {
+    if (event.target.files && event.target.files[0]) {
+      showMessage("Capa importada. Ela aparecerá na biblioteca.");
+      window.refreshGameLibrary();
+    }
+    event.target.value = "";
+  });
+
+  $("file-picker").addEventListener("change", event => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    if (!supported.test(file.name)) {
+      showMessage("Formato não suportado. Escolha .ZIP, .SMF, .SGM ou .SSL.");
+      event.target.value = "";
+      return;
+    }
+    // Android copies the selected file into the app's private game library.
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = URL.createObjectURL(file);
+    startGame(objectUrl, file.name);
+    setTimeout(window.refreshGameLibrary, 1000);
+  });
+
+  window.leaveGame = function () {
+    if (!booted) return;
+    try { if (window.NativeGames) NativeGames.exitFullscreen(); } catch (_) {}
+    document.body.classList.remove("playing-mode");
+    window.location.reload();
+  };
+  $("back").addEventListener("click", () => window.location.reload());
+  window.refreshGameLibrary();
+})();
+</script>
+</body>
+</html>

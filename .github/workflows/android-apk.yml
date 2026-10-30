@@ -1,0 +1,101 @@
+name: Build Native32Emu Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - android-standalone-apk
+    paths:
+      - "android/**"
+      - ".github/workflows/android-apk.yml"
+      - "crates/native32emu-core/**"
+      - "crates/native32emu-libretro/**"
+      - "scripts/build-emulatorjs-core.sh"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native32emu-android-apk
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    name: Build standalone APK (Android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full zip unzip
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.74
+          actions-cache-folder: emsdk-cache
+
+      - name: Set up Rust nightly and WebAssembly target
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+          targets: wasm32-unknown-emscripten
+
+      - name: Build Native32Emu WebAssembly core
+        run: |
+          cargo +nightly build -p native32emu-libretro \
+            --target wasm32-unknown-emscripten \
+            --profile wasm-release \
+            -Zbuild-std=std,panic_abort
+
+      - name: Package EmulatorJS core
+        run: scripts/build-emulatorjs-core.sh
+
+      - name: Prepare bundled EmulatorJS runtime and game core
+        env:
+          EJS_VERSION: "4.2.3"
+        run: |
+          DEST="android/app/src/main/assets/www"
+          EJS_DATA="https://cdn.emulatorjs.org/$EJS_VERSION/data"
+          mkdir -p "$DEST/data/compression" "$DEST/data/localization" "$DEST/data/cores/reports"
+          curl --fail --location --retry 3 "$EJS_DATA/loader.js" -o "$DEST/data/loader.js"
+          curl --fail --location --retry 3 "$EJS_DATA/emulator.min.zip" -o "$RUNNER_TEMP/emulatorjs-runtime.zip"
+          unzip -oq "$RUNNER_TEMP/emulatorjs-runtime.zip" -d "$DEST/data"
+          curl --fail --location --retry 3 "$EJS_DATA/compression/extract7z.js" -o "$DEST/data/compression/extract7z.js"
+          curl --fail --location --retry 3 "$EJS_DATA/compression/extractzip.js" -o "$DEST/data/compression/extractzip.js"
+          curl --fail --location --retry 3 "$EJS_DATA/localization/en-US.json" -o "$DEST/data/localization/en-US.json"
+          cp out/emulatorjs/cores/native32emu-wasm.data "$DEST/data/cores/"
+          cp out/emulatorjs/cores/native32emu-legacy-wasm.data "$DEST/data/cores/"
+          cp out/emulatorjs/cores/reports/native32emu.json "$DEST/data/cores/reports/"
+          cp LICENSE "$DEST/LICENSE"
+          du -sh "$DEST"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build release APK
+        working-directory: android
+        run: gradle --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Native32Emu-Android-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
