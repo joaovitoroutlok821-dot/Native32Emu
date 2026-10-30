@@ -122,7 +122,7 @@ cp "$WASM_DATA" "$LEGACY_DATA" "$OUT_DIR/cores/"
 cat > "$OUT_DIR/core.json" <<EOF
 {
   "name": "Native32",
-  "extensions": ["smf", "sgm", "zip"],
+  "extensions": ["smf", "sgm", "ssl", "zip"],
   "options": {
     "defaultWebGL2": true
   },
