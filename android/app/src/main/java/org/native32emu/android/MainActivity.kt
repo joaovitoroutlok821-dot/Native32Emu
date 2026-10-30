@@ -18,10 +18,12 @@ class MainActivity : Activity() {
     private lateinit var webView: WebView
     private lateinit var assetLoader: WebViewAssetLoader
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
+    private var pendingCoverFor: String? = null
     private val pickGameRequest = 4201
-    private val gameDirectory: File by lazy {
-        File(filesDir, "games").apply { mkdirs() }
-    }
+    private val pickCoverRequest = 4202
+
+    private val gameDirectory: File by lazy { File(filesDir, "games").apply { mkdirs() } }
+    private val coverDirectory: File by lazy { File(filesDir, "covers").apply { mkdirs() } }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,6 +33,7 @@ class MainActivity : Activity() {
         assetLoader = WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
             .addPathHandler("/games/", WebViewAssetLoader.InternalStoragePathHandler(this, gameDirectory))
+            .addPathHandler("/covers/", WebViewAssetLoader.InternalStoragePathHandler(this, coverDirectory))
             .build()
 
         webView = WebView(this)
@@ -52,16 +55,19 @@ class MainActivity : Activity() {
             ): Boolean {
                 this@MainActivity.fileChooserCallback?.onReceiveValue(null)
                 this@MainActivity.fileChooserCallback = filePathCallback
+                val isCover = fileChooserParams?.acceptTypes?.any { it.startsWith("image/") } == true
                 val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
-                    type = "*/*"
-                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
-                        "application/zip",
-                        "application/octet-stream",
-                        "application/x-zip-compressed"
-                    ))
+                    type = if (isCover) "image/*" else "*/*"
+                    if (!isCover) {
+                        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                            "application/zip",
+                            "application/octet-stream",
+                            "application/x-zip-compressed"
+                        ))
+                    }
                 }
-                startActivityForResult(intent, pickGameRequest)
+                startActivityForResult(intent, if (isCover) pickCoverRequest else pickGameRequest)
                 return true
             }
         }
@@ -69,44 +75,66 @@ class MainActivity : Activity() {
         webView.loadUrl("https://appassets.androidplatform.net/assets/www/index.html")
     }
 
-    @Deprecated("Deprecated in Android but still supported for WebView file chooser compatibility")
+    @Deprecated("Deprecated Android API retained for WebView file chooser compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != pickGameRequest) return
+        if (requestCode != pickGameRequest && requestCode != pickCoverRequest) return
         val callback = fileChooserCallback ?: return
         fileChooserCallback = null
         if (resultCode != Activity.RESULT_OK || data?.data == null) {
             callback.onReceiveValue(null)
+            pendingCoverFor = null
             return
         }
 
         val uri = data.data!!
-        val displayName = getDisplayName(uri) ?: "jogo"
-        if (!isSupportedGame(displayName)) {
-            callback.onReceiveValue(null)
-            webView.evaluateJavascript(
-                "window.showNativeError && window.showNativeError('Formato não suportado. Escolha .zip, .smf, .sgm ou .ssl.');",
-                null
-            )
-            return
-        }
-
+        val displayName = getDisplayName(uri) ?: "arquivo"
         try {
-            val destination = uniqueDestination(displayName)
-            contentResolver.openInputStream(uri).use { input ->
-                requireNotNull(input) { "Não foi possível abrir o arquivo escolhido." }
-                destination.outputStream().use { output -> input.copyTo(output) }
+            if (requestCode == pickCoverRequest) {
+                val gameName = pendingCoverFor
+                pendingCoverFor = null
+                if (gameName == null) {
+                    callback.onReceiveValue(null)
+                    return
+                }
+                val extension = (displayName.substringAfterLast('.', "jpg").lowercase())
+                    .takeIf { it in listOf("png", "jpg", "jpeg", "webp", "gif") } ?: "jpg"
+                val destination = File(coverDirectory, "${coverBase(gameName)}.$extension")
+                val source = requireNotNull(contentResolver.openInputStream(uri)) {
+                    "Não foi possível abrir a imagem selecionada."
+                }
+                source.use { input -> destination.outputStream().use { output -> input.copyTo(output) } }
+                callback.onReceiveValue(arrayOf(uri))
+                webView.postDelayed({
+                    webView.evaluateJavascript("window.refreshGameLibrary && window.refreshGameLibrary();", null)
+                }, 300)
+                return
             }
-            // Return the original SAF URI so the WebView can create a File/Blob
-            // for immediate loading. A private copy is kept for the library.
+
+            if (!isSupportedGame(displayName)) {
+                callback.onReceiveValue(null)
+                webView.evaluateJavascript(
+                    "window.showNativeError && window.showNativeError('Formato não suportado. Escolha .zip, .smf, .sgm ou .ssl.');",
+                    null
+                )
+                return
+            }
+
+            val destination = uniqueDestination(displayName)
+            val source = requireNotNull(contentResolver.openInputStream(uri)) {
+                "Não foi possível abrir o arquivo escolhido."
+            }
+            source.use { input -> destination.outputStream().use { output -> input.copyTo(output) } }
+            // Return the original SAF URI for immediate playback; keep the copy for the library.
             callback.onReceiveValue(arrayOf(uri))
             webView.postDelayed({
                 webView.evaluateJavascript("window.refreshGameLibrary && window.refreshGameLibrary();", null)
             }, 800)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             callback.onReceiveValue(null)
+            pendingCoverFor = null
             webView.evaluateJavascript(
-                "window.showNativeError && window.showNativeError('Falha ao importar o jogo. Verifique o espaço disponível e tente novamente.');",
+                "window.showNativeError && window.showNativeError('Falha ao importar o arquivo. Verifique o espaço disponível e tente novamente.');",
                 null
             )
         }
@@ -126,9 +154,15 @@ class MainActivity : Activity() {
     private fun isSupportedGame(name: String): Boolean =
         listOf(".zip", ".smf", ".sgm", ".ssl").any { name.lowercase().endsWith(it) }
 
+    private fun safeName(name: String): String =
+        File(name).name.replace(Regex("[^A-Za-z0-9._ -]"), "_").trim().ifBlank { "jogo.zip" }
+
+    private fun coverBase(name: String): String =
+        File(name).nameWithoutExtension.replace(Regex("[^A-Za-z0-9._ -]"), "_").trim().ifBlank { "jogo" }
+
     private fun uniqueDestination(name: String): File {
-        val safeName = name.replace(Regex("[^A-Za-z0-9._ -]"), "_").trim().ifBlank { "jogo.zip" }
-        var file = File(gameDirectory, safeName)
+        val safe = safeName(name)
+        var file = File(gameDirectory, safe)
         if (!file.exists()) return file
         val base = file.nameWithoutExtension
         val ext = file.extension
@@ -161,11 +195,24 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun gameUrl(name: String): String {
-            val safeName = File(name).name
-            val file = File(gameDirectory, safeName)
+            val file = File(gameDirectory, File(name).name)
             if (!file.isFile || !isSupportedGame(file.name)) return ""
-            return "https://appassets.androidplatform.net/games/" +
-                Uri.encode(file.name).replace("+", "%20")
+            return "https://appassets.androidplatform.net/games/" + Uri.encode(file.name).replace("+", "%20")
+        }
+
+        @JavascriptInterface
+        fun coverUrl(name: String): String {
+            val base = coverBase(name)
+            val file = coverDirectory.listFiles()
+                ?.firstOrNull { it.isFile && it.nameWithoutExtension == base &&
+                    it.extension.lowercase() in listOf("png", "jpg", "jpeg", "webp", "gif") }
+                ?: return ""
+            return "https://appassets.androidplatform.net/covers/" + Uri.encode(file.name).replace("+", "%20")
+        }
+
+        @JavascriptInterface
+        fun prepareCover(name: String) {
+            pendingCoverFor = File(name).name
         }
 
         @JavascriptInterface
